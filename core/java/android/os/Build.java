@@ -15,7 +15,6 @@
  */
 
 package android.os;
-
 import android.Manifest;
 import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
@@ -929,7 +928,7 @@ public class Build {
     public static final String FINGERPRINT = deriveFingerprint();
 
     /* @hide */
-    public static final String CUSTOM_FINGERPRINT = SystemProperties.get("org.pixelexperience.fingerprint",
+    public static final String CUSTOM_FINGERPRINT = SystemProperties.get("org.aost.fingerprint",
             deriveFingerprint());
 
     /**
