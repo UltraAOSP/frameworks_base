@@ -23,7 +23,7 @@ import android.app.WallpaperManager;
 import android.content.Context;
 import android.graphics.Point;
 import android.view.View;
-import android.os.PowerManager
+import android.os.PowerManager;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
