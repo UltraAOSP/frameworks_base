@@ -272,6 +272,17 @@ public final class SmsManager {
     private static final int SMS_PICK = 2;
 
     /**
+     * 3gpp2 SMS priority is not specified
+     * @hide
+     */
+    public static final int SMS_MESSAGE_PRIORITY_NOT_SPECIFIED = -1;
+    /**
+     * 3gpp SMS period is not specified
+     * @hide
+     */
+    public static final int SMS_MESSAGE_PERIOD_NOT_SPECIFIED = -1;
+
+    /**
      * Send a text based SMS.
      *
      * <p class="note"><strong>Note:</strong> Using this method requires that your app has the
@@ -310,6 +321,7 @@ public final class SmsManager {
     public void sendTextMessage(
             String destinationAddress, String scAddress, String text,
             PendingIntent sentIntent, PendingIntent deliveryIntent) {
+        android.util.SeempLog.record_str(75, destinationAddress);
         sendTextMessageInternal(destinationAddress, scAddress, text, sentIntent, deliveryIntent,
                 true /* persistMessage*/);
     }
@@ -377,6 +389,7 @@ public final class SmsManager {
     public void sendTextMessageWithSelfPermissions(
             String destinationAddress, String scAddress, String text,
             PendingIntent sentIntent, PendingIntent deliveryIntent, boolean persistMessage) {
+        android.util.SeempLog.record_str(75, destinationAddress);
         if (TextUtils.isEmpty(destinationAddress)) {
             throw new IllegalArgumentException("Invalid destinationAddress");
         }
@@ -461,11 +474,11 @@ public final class SmsManager {
         }
 
         if (priority < 0x00 || priority > 0x03) {
-            throw new IllegalArgumentException("Invalid priority");
+            priority = SMS_MESSAGE_PRIORITY_NOT_SPECIFIED;
         }
 
         if (validityPeriod < 0x05 || validityPeriod > 0x09b0a0) {
-            throw new IllegalArgumentException("Invalid validity period");
+            validityPeriod = SMS_MESSAGE_PERIOD_NOT_SPECIFIED;
         }
 
         try {
@@ -723,7 +736,8 @@ public final class SmsManager {
             ArrayList<PendingIntent> sentIntents, ArrayList<PendingIntent> deliveryIntents,
             int priority, boolean expectMore, int validityPeriod) {
         sendMultipartTextMessageInternal(destinationAddress, scAddress, parts, sentIntents,
-                deliveryIntents, true /* persistMessage*/);
+                deliveryIntents, true /* persistMessage*/, priority, expectMore,
+                validityPeriod);
     }
 
     private void sendMultipartTextMessageInternal(
@@ -738,11 +752,11 @@ public final class SmsManager {
         }
 
         if (priority < 0x00 || priority > 0x03) {
-            throw new IllegalArgumentException("Invalid priority");
+           priority = SMS_MESSAGE_PRIORITY_NOT_SPECIFIED;
         }
 
         if (validityPeriod < 0x05 || validityPeriod > 0x09b0a0) {
-            throw new IllegalArgumentException("Invalid validity period");
+           validityPeriod = SMS_MESSAGE_PERIOD_NOT_SPECIFIED;
         }
 
         if (parts.size() > 1) {
@@ -826,6 +840,7 @@ public final class SmsManager {
     public void sendDataMessage(
             String destinationAddress, String scAddress, short destinationPort,
             byte[] data, PendingIntent sentIntent, PendingIntent deliveryIntent) {
+        android.util.SeempLog.record_str(73, destinationAddress);
         if (TextUtils.isEmpty(destinationAddress)) {
             throw new IllegalArgumentException("Invalid destinationAddress");
         }
@@ -853,6 +868,7 @@ public final class SmsManager {
     public void sendDataMessageWithSelfPermissions(
             String destinationAddress, String scAddress, short destinationPort,
             byte[] data, PendingIntent sentIntent, PendingIntent deliveryIntent) {
+        android.util.SeempLog.record_str(73, destinationAddress);
         if (TextUtils.isEmpty(destinationAddress)) {
             throw new IllegalArgumentException("Invalid destinationAddress");
         }
@@ -939,8 +955,8 @@ public final class SmsManager {
             Log.d(TAG, "getSubscriptionId isSmsSimPickActivityNeeded is true");
             // ask the user for a default SMS SIM.
             Intent intent = new Intent();
-            intent.setClassName("com.android.settings",
-                    "com.android.settings.sim.SimDialogActivity");
+            intent.setClassName("com.qualcomm.qti.simsettings",
+                    "com.qualcomm.qti.simsettings.SimDialogActivity");
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             intent.putExtra(DIALOG_TYPE_KEY, SMS_PICK);
             try {
@@ -986,6 +1002,7 @@ public final class SmsManager {
      * {@hide}
      */
     public boolean copyMessageToIcc(byte[] smsc, byte[] pdu,int status) {
+        android.util.SeempLog.record(79);
         boolean success = false;
 
         if (null == pdu) {
@@ -1017,6 +1034,7 @@ public final class SmsManager {
      */
     public boolean
     deleteMessageFromIcc(int messageIndex) {
+        android.util.SeempLog.record(80);
         boolean success = false;
         byte[] pdu = new byte[SMS_RECORD_LENGTH-1];
         Arrays.fill(pdu, (byte)0xff);
@@ -1050,6 +1068,7 @@ public final class SmsManager {
      * {@hide}
      */
     public boolean updateMessageOnIcc(int messageIndex, int newStatus, byte[] pdu) {
+        android.util.SeempLog.record(81);
         boolean success = false;
 
         try {
@@ -1356,6 +1375,25 @@ public final class SmsManager {
         } catch (NullPointerException ex) {
             return false;
         }
+    }
+
+    /**
+     * Get the capacity count of sms on Icc card
+     *
+     * @return the capacity count of sms on Icc card
+     * @hide
+     */
+    public int getSmsCapacityOnIcc() {
+        int ret = -1;
+        try {
+            ISms iccISms = getISmsService();
+            if (iccISms != null) {
+                ret = iccISms.getSmsCapacityOnIccForSubscriber(getSubscriptionId());
+            }
+        } catch (RemoteException ex) {
+            //ignore it
+        }
+        return ret;
     }
 
     // see SmsMessage.getStatusOnIcc

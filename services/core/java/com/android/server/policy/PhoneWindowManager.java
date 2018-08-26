@@ -22,6 +22,7 @@ import static android.app.AppOpsManager.OP_SYSTEM_ALERT_WINDOW;
 import static android.app.AppOpsManager.OP_TOAST_WINDOW;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_HOME;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_STANDARD;
+import static android.app.WindowConfiguration.ACTIVITY_TYPE_RECENTS;
 import static android.app.WindowConfiguration.WINDOWING_MODE_FREEFORM;
 import static android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN;
 import static android.app.WindowConfiguration.WINDOWING_MODE_SPLIT_SCREEN_PRIMARY;
@@ -222,6 +223,7 @@ import android.service.dreams.IDreamManager;
 import android.service.vr.IPersistentVrStateCallbacks;
 import android.speech.RecognizerIntent;
 import android.telecom.TelecomManager;
+import android.util.BoostFramework;
 import android.util.ArraySet;
 import android.util.DisplayMetrics;
 import android.util.EventLog;
@@ -399,6 +401,19 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
             .build();
 
+    /**
+     * Broadcast Action: WiFi Display video is enabled or disabled
+     *
+     * <p>The intent will have the following extra values:</p>
+     * <ul>
+     *    <li><em>state</em> - 0 for disabled, 1 for enabled. </li>
+     * </ul>
+     */
+
+    private static final String ACTION_WIFI_DISPLAY_VIDEO =
+                                        "org.codeaurora.intent.action.WIFI_DISPLAY_VIDEO";
+
+
     // The panic gesture may become active only after the keyguard is dismissed and the immersive
     // app shows again. If that doesn't happen for 30s we drop the gesture.
     private static final long PANIC_GESTURE_EXPIRATION = 30000;
@@ -452,6 +467,15 @@ public class PhoneWindowManager implements WindowManagerPolicy {
      */
     private final Object mLock = new Object();
 
+    private static final boolean SCROLL_BOOST_SS_ENABLE =
+                    SystemProperties.getBoolean("vendor.perf.gestureflingboost.enable", false);
+
+    /*
+     * @hide
+     */
+    BoostFramework mPerfBoostDrag = null;
+    BoostFramework mPerfBoostFling = null;
+    BoostFramework mPerfBoostPrefling = null;
     Context mContext;
     IWindowManager mWindowManager;
     WindowManagerFuncs mWindowManagerFuncs;
@@ -476,6 +500,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     private ScreenshotHelper mScreenshotHelper;
     private boolean mHasFeatureWatch;
     private boolean mHasFeatureLeanback;
+    private boolean mIsPerfBoostFlingAcquired;
 
     // Assigned on main thread, accessed on UI thread
     volatile VrManagerInternal mVrManagerInternal;
@@ -856,6 +881,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
     private static final int MSG_REQUEST_TRANSIENT_BARS_ARG_STATUS = 0;
     private static final int MSG_REQUEST_TRANSIENT_BARS_ARG_NAVIGATION = 1;
+    private boolean mWifiDisplayConnected = false;
+    private int mWifiDisplayCustomRotation = -1;
 
     private class PolicyHandler extends Handler {
         @Override
@@ -1997,6 +2024,24 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         return mContext.getResources().getConfiguration().isScreenRound();
     }
 
+    private boolean isTopAppGame() {
+        boolean isGame = false;
+        try {
+            ActivityManager.RunningTaskInfo rti = ActivityManager.getService().getFilteredTasks(1,
+                                    ACTIVITY_TYPE_RECENTS, WINDOWING_MODE_UNDEFINED).get(0);
+            ApplicationInfo ai = mContext.getPackageManager().getApplicationInfo(
+                        rti.topActivity.getPackageName(), 0);
+            if(ai != null) {
+                isGame = (ai.category == ApplicationInfo.CATEGORY_GAME) ||
+                        ((ai.flags & ApplicationInfo.FLAG_IS_GAME) ==
+                            ApplicationInfo.FLAG_IS_GAME);
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        return isGame;
+    }
+
     /** {@inheritDoc} */
     @Override
     public void init(Context context, IWindowManager windowManager,
@@ -2223,12 +2268,66 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                         }
                     }
                     @Override
+                    public void onVerticalFling(int duration) {
+                        String currentPackage = mContext.getPackageName();
+                        boolean isGame = isTopAppGame();
+                        if (SCROLL_BOOST_SS_ENABLE && !isGame) {
+                            if (mPerfBoostFling == null) {
+                                mPerfBoostFling = new BoostFramework();
+                                mIsPerfBoostFlingAcquired = false;
+                            }
+                            if (mPerfBoostFling == null) {
+                                Slog.e(TAG, "Error: boost object null");
+                                return;
+                            }
+
+                            mPerfBoostFling.perfHint(BoostFramework.VENDOR_HINT_SCROLL_BOOST,
+                                currentPackage, duration + 160, BoostFramework.Scroll.VERTICAL);
+                            mIsPerfBoostFlingAcquired = true;
+                        }
+                    }
+                    @Override
+                    public void onScroll(boolean started) {
+                        String currentPackage = mContext.getPackageName();
+                        boolean isGame = isTopAppGame();
+                        if (mPerfBoostDrag == null) {
+                            mPerfBoostDrag = new BoostFramework();
+                        }
+                        if (mPerfBoostDrag == null) {
+                            Slog.e(TAG, "Error: boost object null");
+                            return;
+                        }
+                        if (SCROLL_BOOST_SS_ENABLE && !isGame) {
+                            if (mPerfBoostPrefling == null) {
+                                mPerfBoostPrefling = new BoostFramework();
+                            }
+                            if (mPerfBoostPrefling == null) {
+                                Slog.e(TAG, "Error: boost object null");
+                                return;
+                            }
+                            mPerfBoostPrefling.perfHint(BoostFramework.VENDOR_HINT_SCROLL_BOOST,
+                                    currentPackage, -1, BoostFramework.Scroll.PREFILING);
+                        }
+                        if (!isGame && started) {
+                            mPerfBoostDrag.perfHint(BoostFramework.VENDOR_HINT_DRAG_BOOST,
+                                            currentPackage, -1, 1);
+                        } else {
+                            mPerfBoostDrag.perfLockRelease();
+                        }
+                    }
+
+                    @Override
                     public void onDebug() {
                         // no-op
                     }
                     @Override
                     public void onDown() {
                         mOrientationListener.onTouchStart();
+                        if(SCROLL_BOOST_SS_ENABLE && mPerfBoostFling!= null
+                                            && mIsPerfBoostFlingAcquired) {
+                            mPerfBoostFling.perfLockRelease();
+                            mIsPerfBoostFlingAcquired = false;
+                        }
                     }
                     @Override
                     public void onUpOrCancel() {
@@ -2257,6 +2356,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         mWindowManagerFuncs.registerPointerEventListener(mSystemGestures);
 
         mVibrator = (Vibrator)context.getSystemService(Context.VIBRATOR_SERVICE);
+
+        /* Register for WIFI Display Intents */
+        IntentFilter wifiDisplayFilter = new IntentFilter(ACTION_WIFI_DISPLAY_VIDEO);
+        Intent wifidisplayIntent = context.registerReceiver(
+                                        mWifiDisplayReceiver, wifiDisplayFilter);
         mLongPressVibePattern = getLongIntArray(mContext.getResources(),
                 com.android.internal.R.array.config_longPressVibePattern);
         mCalendarDateVibePattern = getLongIntArray(mContext.getResources(),
@@ -6833,6 +6937,24 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         }
     }
 
+
+    BroadcastReceiver mWifiDisplayReceiver = new BroadcastReceiver() {
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (action.equals(ACTION_WIFI_DISPLAY_VIDEO)) {
+                int state = intent.getIntExtra("state", 0);
+                if(state == 1) {
+                    mWifiDisplayConnected = true;
+                } else {
+                    mWifiDisplayConnected = false;
+                }
+                mWifiDisplayCustomRotation =
+                    intent.getIntExtra("wfd_UIBC_rot", -1);
+                updateRotation(true);
+            }
+        }
+    };
+
     // Called on the PowerManager's Notifier thread.
     @Override
     public void startedGoingToSleep(int why) {
@@ -7337,10 +7459,13 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 // enable 180 degree rotation while docked.
                 preferredRotation = mDeskDockEnablesAccelerometer
                         ? sensorRotation : mDeskDockRotation;
-            } else if (mHdmiPlugged && mDemoHdmiRotationLock) {
+            } else if ((mHdmiPlugged || mWifiDisplayConnected) && mDemoHdmiRotationLock) {
                 // Ignore sensor when plugged into HDMI when demo HDMI rotation lock enabled.
                 // Note that the dock orientation overrides the HDMI orientation.
                 preferredRotation = mDemoHdmiRotation;
+            } else if (mWifiDisplayConnected && (mWifiDisplayCustomRotation > -1)) {
+                // Ignore sensor when WFD is active and UIBC rotation is enabled
+                 preferredRotation = mWifiDisplayCustomRotation;
             } else if (mHdmiPlugged && mDockMode == Intent.EXTRA_DOCK_STATE_UNDOCKED
                     && mUndockedHdmiRotation >= 0) {
                 // Ignore sensor when plugged into HDMI and an undocked orientation has

@@ -334,7 +334,11 @@ public class NetworkControllerBaseTest extends SysuiTestCase {
                     iconArg.capture(),
                     anyInt(),
                     typeIconArg.capture(), dataInArg.capture(), dataOutArg.capture(),
-                    anyString(), anyString(), anyBoolean(), anyInt(), anyBoolean());
+                    ArgumentCaptor.forClass(Integer.class).capture(),
+                    ArgumentCaptor.forClass(Integer.class).capture(),
+                    ArgumentCaptor.forClass(Integer.class).capture(),
+                    anyString(), anyString(), anyBoolean(), anyInt(), anyBoolean(),
+                    anyBoolean(), anyInt(), anyBoolean());
         IconState iconState = iconArg.getValue();
         int state = SignalDrawable.getState(icon, SignalStrength.NUM_SIGNAL_STRENGTH_BINS,
                 false);
@@ -366,8 +370,13 @@ public class NetworkControllerBaseTest extends SysuiTestCase {
                 iconArg.capture(),
                 any(),
                 typeIconArg.capture(),
-                anyInt(), anyBoolean(), anyBoolean(), anyString(), anyString(), anyBoolean(),
-                anyInt(), eq(roaming));
+                anyInt(), anyBoolean(), anyBoolean(),
+                ArgumentCaptor.forClass(Integer.class).capture(),
+                ArgumentCaptor.forClass(Integer.class).capture(),
+                ArgumentCaptor.forClass(Integer.class).capture(),
+                anyString(), anyString(), anyBoolean(),
+                anyInt(), eq(roaming),
+                anyBoolean(), anyInt(), anyBoolean());
         IconState iconState = iconArg.getValue();
 
         int state = icon == -1 ? 0
@@ -400,7 +409,11 @@ public class NetworkControllerBaseTest extends SysuiTestCase {
                 qsTypeIconArg.capture(),
                 dataInArg.capture(),
                 dataOutArg.capture(),
-                anyString(), anyString(), anyBoolean(), anyInt(), anyBoolean());
+                ArgumentCaptor.forClass(Integer.class).capture(),
+                ArgumentCaptor.forClass(Integer.class).capture(),
+                ArgumentCaptor.forClass(Integer.class).capture(),
+                anyString(), anyString(), anyBoolean(), anyInt(), anyBoolean(),
+                anyBoolean(), anyInt(), anyBoolean());
 
         IconState iconState = iconArg.getValue();
 

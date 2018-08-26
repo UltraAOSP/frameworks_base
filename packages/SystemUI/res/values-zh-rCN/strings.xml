@@ -157,7 +157,7 @@
     <string name="data_connection_lte" msgid="2694876797724028614">"LTE"</string>
     <string name="data_connection_lte_plus" msgid="3423013208570937424">"LTE+"</string>
     <string name="data_connection_cdma" msgid="8176597308239086780">"1X"</string>
-    <string name="data_connection_roaming" msgid="6037232010953697354">"漫游"</string>
+    <string name="data_connection_roaming" msgid="6037232010953697354">"数据漫游"</string>
     <string name="data_connection_edge" msgid="871835227939216682">"EDGE"</string>
     <string name="accessibility_data_connection_wifi" msgid="2324496756590645221">"WLAN"</string>
     <string name="accessibility_no_sim" msgid="8274017118472455155">"无 SIM 卡。"</string>
@@ -840,6 +840,12 @@
     <string name="mobile_data_disable_message" msgid="4756541658791493506">"您将无法通过<xliff:g id="CARRIER">%s</xliff:g>获取移动数据访问权限或连接到互联网。您只能通过 WLAN 连接到互联网。"</string>
     <string name="mobile_data_disable_message_default_carrier" msgid="6078110473451946831">"您的运营商"</string>
     <string name="touch_filtered_warning" msgid="8671693809204767551">"由于某个应用遮挡了权限请求界面，因此“设置”应用无法验证您的回应。"</string>
+
+    <!-- Carrier Name -->
+    <string name="China_Mobile">中国移动</string>
+    <string name="China_Unicom">中国联通</string>
+    <string name="China_Telecom">中国电信</string>
+    <string name="China_Mobile_HD">中国移动 (HD)</string>
     <string name="slice_permission_title" msgid="7465009437851044444">"要允许“<xliff:g id="APP_0">%1$s</xliff:g>”显示“<xliff:g id="APP_2">%2$s</xliff:g>”图块吗？"</string>
     <string name="slice_permission_text_1" msgid="3514586565609596523">"- 可以读取“<xliff:g id="APP">%1$s</xliff:g>”中的信息"</string>
     <string name="slice_permission_text_2" msgid="3146758297471143723">"- 可以在“<xliff:g id="APP">%1$s</xliff:g>”内执行操作"</string>

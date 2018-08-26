@@ -2604,8 +2604,8 @@ class DatabaseHelper extends SQLiteOpenHelper {
             for (int phoneId = 0;
                     phoneId < TelephonyManager.getDefault().getPhoneCount(); phoneId++) {
                 mode = TelephonyManager.getTelephonyProperty(phoneId,
-                        "ro.telephony.default_network",
-                        Integer.toString(RILConstants.PREFERRED_NETWORK_MODE));
+                         "ro.telephony.default_network",
+                         Integer.toString(RILConstants.NETWORK_MODE_WCDMA_PREF));
                 if (phoneId == 0) {
                     val = mode;
                 } else {

@@ -144,6 +144,7 @@ public class NetworkControllerImpl extends BroadcastReceiver
     private boolean mUserSetup;
     private boolean mSimDetected;
 
+    private FiveGServiceClient mFiveGServiceClient;
     /**
      * Construct this controller object and register for updates.
      */
@@ -220,7 +221,7 @@ public class NetworkControllerImpl extends BroadcastReceiver
                         deviceProvisionedController.getCurrentUser()));
             }
         });
-
+        mFiveGServiceClient = new FiveGServiceClient(context);
         ConnectivityManager.NetworkCallback callback = new ConnectivityManager.NetworkCallback(){
             private Network mLastNetwork;
             private NetworkCapabilities mLastNetworkCapabilities;
@@ -262,6 +263,7 @@ public class NetworkControllerImpl extends BroadcastReceiver
         for (int i = 0; i < mMobileSignalControllers.size(); i++) {
             MobileSignalController mobileSignalController = mMobileSignalControllers.valueAt(i);
             mobileSignalController.registerListener();
+            mobileSignalController.registerFiveGStateListener(mFiveGServiceClient);
         }
         if (mSubscriptionListener == null) {
             mSubscriptionListener = new SubListener();
@@ -293,6 +295,7 @@ public class NetworkControllerImpl extends BroadcastReceiver
         for (int i = 0; i < mMobileSignalControllers.size(); i++) {
             MobileSignalController mobileSignalController = mMobileSignalControllers.valueAt(i);
             mobileSignalController.unregisterListener();
+            mobileSignalController.unregisterFiveGStateListener(mFiveGServiceClient);
         }
         mSubscriptionManager.removeOnSubscriptionsChangedListener(mSubscriptionListener);
         mContext.unregisterReceiver(this);
@@ -572,7 +575,7 @@ public class NetworkControllerImpl extends BroadcastReceiver
             public int compare(SubscriptionInfo lhs, SubscriptionInfo rhs) {
                 return lhs.getSimSlotIndex() == rhs.getSimSlotIndex()
                         ? lhs.getSubscriptionId() - rhs.getSubscriptionId()
-                        : lhs.getSimSlotIndex() - rhs.getSimSlotIndex();
+                        : rhs.getSimSlotIndex() - lhs.getSimSlotIndex();
             }
         });
         mCurrentSubscriptions = subscriptions;
@@ -602,6 +605,7 @@ public class NetworkControllerImpl extends BroadcastReceiver
                 }
                 if (mListening) {
                     controller.registerListener();
+                    controller.registerFiveGStateListener(mFiveGServiceClient);
                 }
             }
         }
@@ -612,6 +616,7 @@ public class NetworkControllerImpl extends BroadcastReceiver
                     mDefaultSignalController = null;
                 }
                 cachedControllers.get(key).unregisterListener();
+                cachedControllers.get(key).unregisterFiveGStateListener(mFiveGServiceClient);
             }
         }
         mCallbackHandler.setSubs(subscriptions);
@@ -1030,6 +1035,9 @@ public class NetworkControllerImpl extends BroadcastReceiver
         boolean hspaDataDistinguishable;
         boolean inflateSignalStrengths = false;
         boolean alwaysShowDataRatIcon = false;
+        boolean readIconsFromXml;
+        boolean showRsrpSignalLevelforLTE;
+
 
         static Config readConfig(Context context) {
             Config config = new Config();
@@ -1051,6 +1059,9 @@ public class NetworkControllerImpl extends BroadcastReceiver
                 config.alwaysShowDataRatIcon = b.getBoolean(
                         CarrierConfigManager.KEY_ALWAYS_SHOW_DATA_RAT_ICON_BOOL);
             }
+            config.readIconsFromXml = res.getBoolean(R.bool.config_read_icons_from_xml);
+            config.showRsrpSignalLevelforLTE =
+                    res.getBoolean(R.bool.config_showRsrpSignalLevelforLTE);
             return config;
         }
     }

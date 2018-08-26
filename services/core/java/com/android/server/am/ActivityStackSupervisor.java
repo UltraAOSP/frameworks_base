@@ -165,6 +165,7 @@ import android.util.SparseArray;
 import android.util.SparseIntArray;
 import android.util.TimeUtils;
 import android.util.proto.ProtoOutputStream;
+import android.util.BoostFramework;
 import android.view.Display;
 
 import com.android.internal.annotations.GuardedBy;
@@ -216,6 +217,10 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
     static final int RESUME_TOP_ACTIVITY_MSG = FIRST_SUPERVISOR_STACK_MSG + 2;
     static final int SLEEP_TIMEOUT_MSG = FIRST_SUPERVISOR_STACK_MSG + 3;
     static final int LAUNCH_TIMEOUT_MSG = FIRST_SUPERVISOR_STACK_MSG + 4;
+
+    public static boolean mPerfSendTapHint = false;
+    public BoostFramework mPerfBoost = null;
+    public BoostFramework mUxPerf = null;
     static final int HANDLE_DISPLAY_ADDED = FIRST_SUPERVISOR_STACK_MSG + 5;
     static final int HANDLE_DISPLAY_CHANGED = FIRST_SUPERVISOR_STACK_MSG + 6;
     static final int HANDLE_DISPLAY_REMOVED = FIRST_SUPERVISOR_STACK_MSG + 7;
@@ -1634,6 +1639,8 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
      * @param markFrozenIfConfigChanged Whether to set {@link ActivityRecord#frozenBeforeDestroy} to
      *                                  {@code true} if config changed.
      * @param deferResume Whether to defer resume while updating config.
+     * @return 'true' if starting activity was kept or wasn't provided, 'false' if it was relaunched
+     *         because of configuration update.
      */
     boolean ensureVisibilityAndConfig(ActivityRecord starting, int displayId,
             boolean markFrozenIfConfigChanged, boolean deferResume) {
@@ -1643,6 +1650,11 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
         // activity will be properly updated.
         ensureActivitiesVisibleLocked(null /* starting */, 0 /* configChanges */,
                 false /* preserveWindows */, false /* notifyClients */);
+
+        if (displayId == INVALID_DISPLAY) {
+            // The caller didn't provide a valid display id, skip updating config.
+            return true;
+        }
 
         // Force-update the orientation from the WindowManager, since we need the true configuration
         // to send to the client now.
@@ -2281,6 +2293,16 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
     void findTaskToMoveToFront(TaskRecord task, int flags, ActivityOptions options, String reason,
             boolean forceNonResizeable) {
         final ActivityStack currentStack = task.getStack();
+
+        ActivityStack focusedStack = getFocusedStack();
+        ActivityRecord top_activity = focusedStack != null ? focusedStack.getTopActivity() : null;
+
+        //top_activity = task.stack.topRunningActivityLocked();
+        /* App is launching from recent apps and it's a new process */
+        if(top_activity != null && top_activity.getState() == ActivityState.DESTROYED) {
+            acquireAppLaunchPerfLock(top_activity);
+        }
+
         if (currentStack == null) {
             Slog.e(TAG, "findTaskToMoveToFront: can't move task="
                     + task + " to front. Stack is null");
@@ -3413,6 +3435,28 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
         return true;
     }
 
+    void acquireAppLaunchPerfLock(ActivityRecord r) {
+       /* Acquire perf lock during new app launch */
+       if (mPerfBoost == null) {
+           mPerfBoost = new BoostFramework();
+       }
+       if (mPerfBoost != null) {
+           mPerfBoost.perfHint(BoostFramework.VENDOR_HINT_FIRST_LAUNCH_BOOST, r.packageName, -1, BoostFramework.Launch.BOOST_V1);
+           mPerfSendTapHint = true;
+           mPerfBoost.perfHint(BoostFramework.VENDOR_HINT_FIRST_LAUNCH_BOOST, r.packageName, -1, BoostFramework.Launch.BOOST_V2);
+           // Start IOP
+           mPerfBoost.perfIOPrefetchStart(-1,r.packageName,
+                   r.appInfo.sourceDir.substring(0, r.appInfo.sourceDir.lastIndexOf('/')));
+       }
+    }
+
+    void acquireUxPerfLock(int opcode, String packageName) {
+        mUxPerf = new BoostFramework();
+        if (mUxPerf != null) {
+            mUxPerf.perfUXEngine_events(opcode, 0, packageName, 0);
+        }
+    }
+
     ActivityRecord findTaskLocked(ActivityRecord r, int displayId) {
         mTmpFindTaskResult.r = null;
         mTmpFindTaskResult.matchedByRootAffinity = false;
@@ -3435,6 +3479,14 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
                 // matches not on the specified display.
                 if (mTmpFindTaskResult.r != null) {
                     if (!mTmpFindTaskResult.matchedByRootAffinity) {
+                        if(mTmpFindTaskResult.r.getState() == ActivityState.DESTROYED ) {
+                            /*It's a new app launch */
+                            acquireAppLaunchPerfLock(r);
+                        }
+                        if(mTmpFindTaskResult.r.getState() == ActivityState.STOPPED) {
+                            /*Warm launch */
+                            acquireUxPerfLock(BoostFramework.UXE_EVENT_SUB_LAUNCH, r.packageName);
+                        }
                         return mTmpFindTaskResult.r;
                     } else if (mTmpFindTaskResult.r.getDisplayId() == displayId) {
                         // Note: since the traversing through the stacks is top down, the floating
@@ -3447,6 +3499,11 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
                     }
                 }
             }
+        }
+
+        /* Acquire perf lock *only* during new app launch */
+        if (mTmpFindTaskResult.r == null || mTmpFindTaskResult.r.getState() == ActivityState.DESTROYED) {
+            acquireAppLaunchPerfLock(r);
         }
 
         if (DEBUG_TASKS && affinityMatch == null) Slog.d(TAG_TASKS, "No task found");
@@ -4384,6 +4441,16 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
 
     private void removeSleepTokenLocked(SleepTokenImpl token) {
         mSleepTokens.remove(token);
+
+                    if (mService.mEnableNetOpts) {
+                        ActivityStack stack = getLastStack();
+                        if (stack != null) {
+                            ActivityRecord r = stack.topRunningActivityLocked();
+                            if (r != null) {
+                                mService.networkOptsCheck(0, r.processName);
+                            }
+                        }
+                    }
 
         ActivityDisplay display = mActivityDisplays.get(token.mDisplayId);
         if (display != null) {

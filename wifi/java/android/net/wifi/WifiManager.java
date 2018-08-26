@@ -153,6 +153,19 @@ public class WifiManager {
     public static final String EXTRA_SCAN_AVAILABLE = "scan_enabled";
 
     /**
+    *
+    *
+    * @hide
+    **/
+    public static final String  WIFI_DATA_STALL = "com.qualcomm.qti.net.wifi.WIFI_DATA_STALL";
+
+    /**
+    *
+    * see data stall reason code
+    * @hide
+    **/
+    public static final String  EXTRA_WIFI_DATA_STALL_REASON = "data_stall_reasoncode";
+    /**
      * Broadcast intent action indicating that the credential of a Wi-Fi network
      * has been changed. One extra provides the ssid of the network. Another
      * extra provides the event type, whether the credential is saved or forgot.
@@ -800,6 +813,26 @@ public class WifiManager {
     public static final String NETWORK_IDS_CHANGED_ACTION = "android.net.wifi.NETWORK_IDS_CHANGED";
 
     /**
+     * Broadcast intent action indicating DPP Event arrival notificaiton.
+     * @see #EXTRA_DPP_DATA.
+     * @hide
+     */
+    public static final String DPP_EVENT_ACTION = "com.qualcomm.qti.net.wifi.DPP_EVENT";
+
+    /**
+     * This shall point to DppResult Type.
+     * @hide
+     */
+    public static final String EXTRA_DPP_EVENT_TYPE = "dppEventType";
+
+    /**
+     * This shall point to WifiDppConfig object. Retrieve with
+     * {@link android.content.Intent#getParcelableExtra(String)}.
+     * @hide
+     */
+    public static final String EXTRA_DPP_EVENT_DATA = "dppEventData";
+
+    /**
      * Activity Action: Show a system activity that allows the user to enable
      * scans to be available even with Wi-Fi turned off.
      *
@@ -843,6 +876,34 @@ public class WifiManager {
      */
     @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
     public static final String ACTION_REQUEST_DISABLE = "android.net.wifi.action.REQUEST_DISABLE";
+
+    /**
+     * Broadcast intent action indicating that WifiCountryCode was updated with new
+     * country code.
+     *
+     * @see #EXTRA_COUNTRY_CODE
+     *
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
+    public static final String WIFI_COUNTRY_CODE_CHANGED_ACTION =
+            "android.net.wifi.COUNTRY_CODE_CHANGED";
+
+    /**
+     * The lookup key for a string that indicates the 2 char new country code
+     *
+     * @hide
+     */
+    public static final String EXTRA_COUNTRY_CODE = "country_code";
+
+    /**
+     * Broadcast intent action indicating that the user initiated Wifi OFF
+     * or APM ON and Wifi disconnection is in progress
+     * Actual Wifi disconnection happens after mDisconnectDelayDuration seconds.
+     * @hide
+     */
+    public static final String  ACTION_WIFI_DISCONNECT_IN_PROGRESS =
+            "com.qualcomm.qti.net.wifi.WIFI_DISCONNECT_IN_PROGRESS";
 
     /**
      * Internally used Wi-Fi lock mode representing the case were no locks are held.
@@ -1143,6 +1204,52 @@ public class WifiManager {
         }
         return addOrUpdateNetwork(config);
     }
+
+
+     /**
+      * Check the WifiSharing mode.
+      *
+      * @return true if Current Sta network connected with extending coverage
+      * option. false if it is not.
+      *
+      * @hide no intent to publish
+      */
+      public boolean isExtendingWifi() {
+          try {
+              return mService.isExtendingWifi();
+          } catch (RemoteException e) {
+              throw e.rethrowFromSystemServer();
+          }
+      }
+
+     /**
+      * Check Wifi coverage extend feature enabled or not.
+      *
+      * @return true if Wifi extend feature is enabled.
+      *
+      * @hide no intent to publish
+      */
+      public boolean isWifiCoverageExtendFeatureEnabled() {
+          try {
+              return mService.isWifiCoverageExtendFeatureEnabled();
+          } catch (RemoteException e) {
+              throw e.rethrowFromSystemServer();
+          }
+      }
+
+     /**
+      * Enable/disable Wifi coverage extend feature.
+      *
+      * @hide no intent to publish
+      */
+      public void enableWifiCoverageExtendFeature(boolean enable) {
+          try {
+              mService.enableWifiCoverageExtendFeature(enable);
+          } catch (RemoteException e) {
+              throw e.rethrowFromSystemServer();
+          }
+      }
+
 
     /**
      * Internal method for doing the RPC that creates a new network description
@@ -1680,6 +1787,7 @@ public class WifiManager {
      * returned.
      */
     public List<ScanResult> getScanResults() {
+        android.util.SeempLog.record(55);
         try {
             return mService.getScanResults(mContext.getOpPackageName());
         } catch (RemoteException e) {
@@ -2429,6 +2537,22 @@ public class WifiManager {
          * @param numClients number of connected clients
          */
         public abstract void onNumClientsChanged(int numClients);
+
+        /**
+         * Called when Stations connected to soft AP.
+         *
+         * @param Macaddr Mac Address of connected Stations to soft AP
+         * @param numClients number of connected clients
+         */
+        public abstract void onStaConnected(String Macaddr, int numClients);
+
+        /**
+         * Called when Stations disconnected to soft AP.
+         *
+         * @param Macaddr Mac Address of Disconnected Stations to soft AP
+         * @param numClients number of connected clients
+         */
+        public abstract void onStaDisconnected(String Macaddr, int numClients);
     }
 
     /**
@@ -2459,6 +2583,22 @@ public class WifiManager {
             Log.v(TAG, "SoftApCallbackProxy: onNumClientsChanged: numClients=" + numClients);
             mHandler.post(() -> {
                 mCallback.onNumClientsChanged(numClients);
+            });
+        }
+
+        @Override
+        public void onStaConnected(String Macaddr, int numClients) throws RemoteException {
+            Log.v(TAG, "SoftApCallbackProxy: [" + numClients + "]onStaConnected Macaddr =" + Macaddr);
+            mHandler.post(() -> {
+                mCallback.onStaConnected(Macaddr, numClients);
+            });
+        }
+
+        @Override
+        public void onStaDisconnected(String Macaddr, int numClients) throws RemoteException {
+            Log.v(TAG, "SoftApCallbackProxy: [" + numClients + "]onStaDisconnected Macaddr =" + Macaddr);
+            mHandler.post(() -> {
+                mCallback.onStaDisconnected(Macaddr, numClients);
             });
         }
     }
@@ -3689,7 +3829,6 @@ public class WifiManager {
             mHandler = new Handler(looper);
             mCallback = callback;
         }
-
         @Override
         public void onProvisioningStatus(int status) {
             mHandler.post(() -> {
@@ -3704,4 +3843,190 @@ public class WifiManager {
             });
         }
     }
+
+    /**
+     * Get driver Capabilities.
+     *
+     * @param capaType ASCII string, capability type ex: key_mgmt.
+     * @return String of capabilities from driver for type capaParameter.
+     * {@hide}
+     */
+    public String getCapabilities(String capaType) {
+        try {
+            return mService.getCapabilities(capaType);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+
+    /**
+     * Add the DPP bootstrap info obtained from QR code.
+     *
+     * @param uri:The URI obtained from the QR code reader.
+     *
+     * @return: Handle to strored info else -1 on failure
+     * @hide
+     */
+    public int dppAddBootstrapQrCode(String uri) {
+        try {
+            return mService.dppAddBootstrapQrCode(uri);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+
+    /**
+     * Generate bootstrap URI based on the passed arguments
+     *
+     * @param config – bootstrap generate config, mandatory parameters
+     *                 are: type, frequency, mac_addr, curve, key.
+     *
+     * @return: Handle to strored URI info else -1 on failure
+     * @hide
+     */
+    public int dppBootstrapGenerate(WifiDppConfig config) {
+        try {
+            return mService.dppBootstrapGenerate(config);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Get bootstrap URI based on bootstrap ID
+     *
+     * @param bootstrap_id: Stored bootstrap ID
+     *
+     * @return: URI string else -1 on failure
+     * @hide
+     */
+    public String dppGetUri(int bootstrap_id) {
+        try {
+            return mService.dppGetUri(bootstrap_id);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Remove bootstrap URI based on bootstrap ID.
+     *
+     * @param bootstrap_id: Stored bootstrap ID. 0 to remove all.
+     *
+     * @return: 0 – Success or -1 on failure
+     * @hide
+     */
+    public int dppBootstrapRemove(int bootstrap_id) {
+        try {
+            return mService.dppBootstrapRemove(bootstrap_id);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * start listen on the channel specified waiting to receive
+     * the DPP Authentication request.
+     *
+     * @param frequency: DPP listen frequency
+     * @param dpp_role: Configurator/Enrollee role
+     * @param qr_mutual: Mutual authentication required
+     * @param netrole_ap: network role
+     *
+     * @return: Returns 0 if a DPP-listen work is successfully
+     *  queued and -1 on failure.
+     * @hide
+     */
+    public int dppListen(String frequency, int dpp_role, boolean qr_mutual,
+                         boolean netrole_ap) {
+        try {
+            return mService.dppListen(frequency, dpp_role, qr_mutual, netrole_ap);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * stop ongoing dpp listen.
+     *
+     * @hide
+     */
+    public void dppStopListen() {
+        try {
+            mService.dppStopListen();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Adds the DPP configurator
+     *
+     * @param curve curve used for dpp encryption
+     * @param key private key
+     * @param expiry timeout in seconds
+     *
+     * @return: Identifier of the added configurator or -1 on failure
+     * @hide
+     */
+    public int dppConfiguratorAdd(String curve, String key, int expiry) {
+        try {
+            return mService.dppConfiguratorAdd(curve, key, expiry);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Remove the added configurator through dppConfiguratorAdd.
+     *
+     * @param config_id: DPP Configurator ID. 0 to remove all.
+     *
+     * @return: Handle to strored info else -1 on failure
+     * @hide
+     */
+    public int dppConfiguratorRemove(int config_id) {
+        try {
+            return mService.dppConfiguratorRemove(config_id);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Start DPP authentication and provisioning with the specified peer
+     *
+     * @param config – dpp auth init config mandatory parameters
+     *                 are: peer_bootstrap_id,  own_bootstrap_id,  dpp_role,
+     *                 ssid, passphrase, isDpp, conf_id, expiry.
+     *
+     * @return: 0 if DPP auth request was transmitted and -1 on failure
+     * @hide
+     */
+    public int  dppStartAuth(WifiDppConfig config) {
+        try {
+            return mService.dppStartAuth(config);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Retrieve Private key to be used for configurator
+     *
+     * @param id: id of configurator
+     *
+     * @return: KEY string else -1 on failure
+     * @hide
+     */
+    public String dppConfiguratorGetKey(int id) {
+        try {
+            return mService.dppConfiguratorGetKey(id);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
 }

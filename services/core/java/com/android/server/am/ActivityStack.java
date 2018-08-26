@@ -144,6 +144,8 @@ import android.util.Slog;
 import android.util.SparseArray;
 import android.util.proto.ProtoOutputStream;
 import android.view.Display;
+import com.android.internal.app.ActivityTrigger;
+
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
@@ -155,6 +157,7 @@ import com.android.server.wm.ConfigurationContainer;
 import com.android.server.wm.StackWindowController;
 import com.android.server.wm.StackWindowListener;
 import com.android.server.wm.WindowManagerService;
+import android.util.BoostFramework;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -275,6 +278,7 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
     private final WindowManagerService mWindowManager;
     T mWindowContainerController;
 
+    public BoostFramework mPerf = null;
     /**
      * The back history of all previous (and possibly still
      * running) activities.  It contains #TaskRecord objects.
@@ -377,8 +381,12 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
 
     final Handler mHandler;
 
-    private class ActivityStackHandler extends Handler {
+    static final ActivityTrigger mActivityTrigger = new ActivityTrigger();
 
+    private static final ActivityPluginDelegate mActivityPluginDelegate =
+        new ActivityPluginDelegate();
+
+    private class ActivityStackHandler extends Handler {
         ActivityStackHandler(Looper looper) {
             super(looper);
         }
@@ -1441,6 +1449,17 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
 
         if (DEBUG_STATES) Slog.v(TAG_STATES, "Moving to PAUSING: " + prev);
         else if (DEBUG_PAUSE) Slog.v(TAG_PAUSE, "Start pausing: " + prev);
+
+        if (mActivityTrigger != null) {
+            mActivityTrigger.activityPauseTrigger(prev.intent, prev.info, prev.appInfo);
+        }
+
+        if (mActivityPluginDelegate != null) {
+            mActivityPluginDelegate.activitySuspendNotification
+                (prev.appInfo.packageName, prev.fullscreen, true);
+        }
+
+        mResumedActivity = null;
         mPausingActivity = prev;
         mLastPausedActivity = prev;
         mLastNoHistoryActivity = (prev.intent.getFlags() & Intent.FLAG_ACTIVITY_NO_HISTORY) != 0
@@ -1642,8 +1661,9 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
         // Notify when the task stack has changed, but only if visibilities changed (not just
         // focus). Also if there is an active pinned stack - we always want to notify it about
         // task stack changes, because its positioning may depend on it.
+        boolean hasPinnedStack = getDisplay() != null && getDisplay().hasPinnedStack();
         if (mStackSupervisor.mAppVisibilitiesChangedSinceLastPause
-                || getDisplay().hasPinnedStack()) {
+                || hasPinnedStack) {
             mService.mTaskChangeNotificationController.notifyTaskStackChanged();
             mStackSupervisor.mAppVisibilitiesChangedSinceLastPause = false;
         }
@@ -2401,10 +2421,21 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
         mStackSupervisor.mGoingToSleepActivities.remove(next);
         next.sleeping = false;
         mStackSupervisor.mActivitiesWaitingForVisibleActivity.remove(next);
+        next.launching = true;
 
         if (DEBUG_SWITCH) Slog.v(TAG_SWITCH, "Resuming " + next);
 
-        // If we are currently pausing an activity, then don't do anything until that is done.
+        if (mActivityTrigger != null) {
+            mActivityTrigger.activityResumeTrigger(next.intent, next.info, next.appInfo,
+                    next.fullscreen);
+        }
+
+        if (mActivityPluginDelegate != null) {
+            mActivityPluginDelegate.activityInvokeNotification
+                (next.appInfo.packageName, next.fullscreen);
+        }
+        // If we are currently pausing an activity, then don't do anything
+        // until that is done.
         if (!mStackSupervisor.allPausedActivitiesComplete()) {
             if (DEBUG_SWITCH || DEBUG_PAUSE || DEBUG_STATES) Slog.v(TAG_PAUSE,
                     "resumeTopActivityLocked: Skip resume: some activity pausing.");
@@ -2531,6 +2562,9 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
         // that the previous one will be hidden soon.  This way it can know
         // to ignore it when computing the desired screen orientation.
         boolean anim = true;
+        if (mPerf == null) {
+            mPerf = new BoostFramework();
+        }
         if (prev != null) {
             if (prev.finishing) {
                 if (DEBUG_TRANSITION) Slog.v(TAG_TRANSITION,
@@ -2542,6 +2576,9 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
                     mWindowManager.prepareAppTransition(prev.getTask() == next.getTask()
                             ? TRANSIT_ACTIVITY_CLOSE
                             : TRANSIT_TASK_CLOSE, false);
+                    if(prev.getTask() != next.getTask() && mPerf != null) {
+                       mPerf.perfHint(BoostFramework.VENDOR_HINT_ANIM_BOOST, next.packageName);
+                    }
                 }
                 prev.setVisibility(false);
             } else {
@@ -2556,6 +2593,9 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
                             : next.mLaunchTaskBehind
                                     ? TRANSIT_TASK_OPEN_BEHIND
                                     : TRANSIT_TASK_OPEN, false);
+                    if(prev.getTask() != next.getTask() && mPerf != null) {
+                       mPerf.perfHint(BoostFramework.VENDOR_HINT_ANIM_BOOST, next.packageName);
+                    }
                 }
             }
         } else {
@@ -2919,7 +2959,17 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
         }
         task.setFrontOfTask();
 
-        if (!isHomeOrRecentsStack() || numActivities() > 0) {
+        if (mActivityTrigger != null) {
+            mActivityTrigger.activityStartTrigger(r.intent, r.info, r.appInfo, r.fullscreen);
+        }
+        if (mActivityPluginDelegate != null) {
+            mActivityPluginDelegate.activityInvokeNotification
+                (r.appInfo.packageName, r.fullscreen);
+        }
+        if (!isActivityTypeHome() || numActivities() > 0) {
+            // We want to show the starting preview window if we are
+            // switching to a new task, or the next activity's process is
+            // not currently running.
             if (DEBUG_TRANSITION) Slog.v(TAG_TRANSITION,
                     "Prepare open transition: starting " + r);
             if ((r.intent.getFlags() & Intent.FLAG_ACTIVITY_NO_ANIMATION) != 0) {
@@ -3445,6 +3495,7 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
 
     final void stopActivityLocked(ActivityRecord r) {
         if (DEBUG_SWITCH) Slog.d(TAG_SWITCH, "Stopping: " + r);
+        r.launching = false;
         if ((r.intent.getFlags()&Intent.FLAG_ACTIVITY_NO_HISTORY) != 0
                 || (r.info.flags&ActivityInfo.FLAG_NO_HISTORY) != 0) {
             if (!r.finishing) {
@@ -3469,11 +3520,22 @@ class ActivityStack<T extends StackWindowController> extends ConfigurationContai
             r.resumeKeyDispatchingLocked();
             try {
                 r.stopped = false;
+
                 if (DEBUG_STATES) Slog.v(TAG_STATES,
                         "Moving to STOPPING: " + r + " (stop requested)");
                 r.setState(STOPPING, "stopActivityLocked");
                 if (DEBUG_VISIBILITY) Slog.v(TAG_VISIBILITY,
                         "Stopping visible=" + r.visible + " for " + r);
+
+                if (mActivityTrigger != null) {
+                    mActivityTrigger.activityStopTrigger(r.intent, r.info, r.appInfo);
+                }
+
+                if (mActivityPluginDelegate != null) {
+                    mActivityPluginDelegate.activitySuspendNotification
+                        (r.appInfo.packageName, r.fullscreen, false);
+                }
+
                 if (!r.visible) {
                     r.setVisible(false);
                 }

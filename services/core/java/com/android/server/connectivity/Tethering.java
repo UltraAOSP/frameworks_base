@@ -40,6 +40,7 @@ import static android.net.ConnectivityManager.TETHERING_BLUETOOTH;
 import static android.net.ConnectivityManager.TETHERING_INVALID;
 import static android.net.ConnectivityManager.TETHERING_USB;
 import static android.net.ConnectivityManager.TETHERING_WIFI;
+import static android.net.ConnectivityManager.TETHERING_WIGIG;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.wifi.WifiManager.EXTRA_WIFI_AP_INTERFACE_NAME;
 import static android.net.wifi.WifiManager.EXTRA_WIFI_AP_MODE;
@@ -91,6 +92,7 @@ import android.os.Parcel;
 import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.ResultReceiver;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.UserManagerInternal;
@@ -318,7 +320,7 @@ public class Tethering extends BaseNetworkObserver {
             if (up) {
                 maybeTrackNewInterfaceLocked(iface);
             } else {
-                if (ifaceNameToType(iface) == TETHERING_BLUETOOTH) {
+                if (ifaceNameToType(iface) == TETHERING_WIGIG) {
                     stopTrackingInterfaceLocked(iface);
                 } else {
                     // Ignore usb0 down after enabling RNDIS.
@@ -340,6 +342,10 @@ public class Tethering extends BaseNetworkObserver {
         final TetheringConfiguration cfg = mConfig;
 
         if (cfg.isWifi(iface)) {
+            String wigigIface = SystemProperties.get("vendor.wigig.interface", "wigig0");
+            if (wigigIface.equals(iface)) {
+                return TETHERING_WIGIG;
+            }
             return TETHERING_WIFI;
         } else if (cfg.isUsb(iface)) {
             return TETHERING_USB;
@@ -1266,7 +1272,8 @@ public class Tethering extends BaseNetworkObserver {
             addState(mSetDnsForwardersErrorState);
 
             mNotifyList = new ArrayList<>();
-            mIPv6TetheringCoordinator = deps.getIPv6TetheringCoordinator(mNotifyList, mLog);
+            mIPv6TetheringCoordinator = deps.getIPv6TetheringCoordinator(
+                    mNotifyList, mLog);
             mOffload = new OffloadWrapper();
 
             setInitialState(mInitialState);

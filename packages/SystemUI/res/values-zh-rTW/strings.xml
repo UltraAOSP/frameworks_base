@@ -157,7 +157,7 @@
     <string name="data_connection_lte" msgid="2694876797724028614">"LTE"</string>
     <string name="data_connection_lte_plus" msgid="3423013208570937424">"LTE+"</string>
     <string name="data_connection_cdma" msgid="8176597308239086780">"1X"</string>
-    <string name="data_connection_roaming" msgid="6037232010953697354">"漫遊"</string>
+    <string name="data_connection_roaming" msgid="6037232010953697354">"數據漫遊"</string>
     <string name="data_connection_edge" msgid="871835227939216682">"EDGE"</string>
     <string name="accessibility_data_connection_wifi" msgid="2324496756590645221">"Wi-Fi"</string>
     <string name="accessibility_no_sim" msgid="8274017118472455155">"沒有 SIM 卡。"</string>
@@ -840,6 +840,12 @@
     <string name="mobile_data_disable_message" msgid="4756541658791493506">"你將無法透過「<xliff:g id="CARRIER">%s</xliff:g>」使用行動數據或網際網路。你只能透過 Wi-Fi 使用網際網路。"</string>
     <string name="mobile_data_disable_message_default_carrier" msgid="6078110473451946831">"你的電信業者"</string>
     <string name="touch_filtered_warning" msgid="8671693809204767551">"由於某個應用程式覆蓋了權限要求畫面，因此「設定」應用程式無法驗證你的回應。"</string>
+
+    <!-- Carrier Name -->
+    <string name="China_Mobile">中國移動</string>
+    <string name="China_Unicom">中國聯通</string>
+    <string name="China_Telecom">中國電信</string>
+    <string name="China_Mobile_HD">中國移動 (HD)</string>
     <string name="slice_permission_title" msgid="7465009437851044444">"要允許「<xliff:g id="APP_0">%1$s</xliff:g>」顯示「<xliff:g id="APP_2">%2$s</xliff:g>」的區塊嗎？"</string>
     <string name="slice_permission_text_1" msgid="3514586565609596523">"- 它可以讀取「<xliff:g id="APP">%1$s</xliff:g>」的資訊"</string>
     <string name="slice_permission_text_2" msgid="3146758297471143723">"- 它可以在「<xliff:g id="APP">%1$s</xliff:g>」內執行操作"</string>

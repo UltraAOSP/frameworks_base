@@ -37,6 +37,7 @@ cc_library_shared {
     cpp_std: "c++17",
 
     srcs: [
+        "android_util_SeempLog.cpp",
         "AndroidRuntime.cpp",
         "com_android_internal_content_NativeLibraryHelper.cpp",
         "com_google_android_gles_jni_EGLImpl.cpp",
@@ -205,6 +206,7 @@ cc_library_shared {
         "com_android_internal_view_animation_NativeInterpolatorFactoryHelper.cpp",
         "hwbinder/EphemeralStorage.cpp",
         "fd_utils.cpp",
+        "com_android_internal_app_ActivityTrigger.cpp",
     ],
 
     include_dirs: [

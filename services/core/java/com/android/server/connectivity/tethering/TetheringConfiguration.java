@@ -32,6 +32,7 @@ import static com.android.internal.R.string.config_mobile_hotspot_provision_app_
 import android.content.Context;
 import android.content.res.Resources;
 import android.net.ConnectivityManager;
+import android.os.SystemProperties;
 import android.net.util.SharedLog;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
@@ -100,7 +101,14 @@ public class TetheringConfiguration {
         // TODO: Evaluate deleting this altogether now that Wi-Fi always passes
         // us an interface name. Careful consideration needs to be given to
         // implications for Settings and for provisioning checks.
-        tetherableWifiRegexs = getResourceStringArray(ctx, config_tether_wifi_regexs);
+        if (SystemProperties.getInt("persist.vendor.fst.softap.en", 0) == 1) {
+            String defaultFstInterfaceName = "bond0";
+            String fstInterfaceName = SystemProperties.get(
+                "persist.vendor.fst.data.interface", defaultFstInterfaceName);
+            tetherableWifiRegexs = new String[] { fstInterfaceName };
+        } else {
+            tetherableWifiRegexs = getResourceStringArray(ctx, config_tether_wifi_regexs);
+        }
         tetherableBluetoothRegexs = getResourceStringArray(ctx, config_tether_bluetooth_regexs);
 
         dunCheck = checkDunRequired(ctx);

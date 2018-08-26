@@ -168,6 +168,7 @@ import android.os.Trace;
 import android.os.UserHandle;
 import android.os.storage.StorageManager;
 import android.service.voice.IVoiceInteractionSession;
+import android.util.BoostFramework;
 import android.util.EventLog;
 import android.util.Log;
 import android.util.MergedConfiguration;
@@ -195,6 +196,7 @@ import com.android.server.wm.TaskWindowContainerController;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlSerializer;
+import android.util.BoostFramework;
 
 import java.io.File;
 import java.io.IOException;
@@ -205,6 +207,10 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import android.util.BoostFramework;
+
+import android.os.AsyncTask;
+import android.util.BoostFramework;
 
 /**
  * An entry in the history stack, representing an activity.
@@ -263,6 +269,7 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
     private int theme;              // resource identifier of activity's theme.
     private int realTheme;          // actual theme resource we will use, never 0.
     private int windowFlags;        // custom window flags for preview window.
+    int perfActivityBoostHandler = -1; //perflock handler when activity is created.
     private TaskRecord task;        // the task this is in.
     private long createTime = System.currentTimeMillis();
     long displayStartTime;  // when we started launching this activity
@@ -313,6 +320,7 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
     private boolean mDeferHidingClient; // If true we told WM to defer reporting to the client
                                         // process that it is hidden.
     boolean sleeping;       // have we told the activity to sleep?
+    boolean launching;      // is activity launch in progress?
     boolean nowVisible;     // is this activity's window visible?
     boolean mClientVisibilityDeferred;// was the visibility change message to client deferred?
     boolean idle;           // has the activity gone idle?
@@ -353,6 +361,10 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
     boolean pendingVoiceInteractionStart;   // Waiting for activity-invoked voice session
     IVoiceInteractionSession voiceSession;  // Voice interaction session for this activity
 
+    private BoostFramework mPerf = null;
+    public BoostFramework mUxPerf = new BoostFramework();
+    public BoostFramework mPerf_iop = null;
+
     // A hint to override the window specified rotation animation, or -1
     // to use the window specified value. We use this so that
     // we can select the right animation in the cases of starting
@@ -362,6 +374,7 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
 
     private boolean mShowWhenLocked;
     private boolean mTurnScreenOn;
+    public static BoostFramework mPerfFirstDraw = null;
 
     // Full screen aspect ratio
     private final float mFullScreenAspectRatio = Resources.getSystem().getFloat(
@@ -783,6 +796,29 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
         }
     }
 
+    private class PreferredAppsTask extends AsyncTask<Void, Void, Void> {
+        @Override
+        protected Void doInBackground(Void... params) {
+            String res = null;
+            if (mUxPerf != null) {
+                res = mUxPerf.perfUXEngine_trigger(BoostFramework.UXE_TRIGGER);
+                if (res == null)
+                    return null;
+                String[] p_apps = res.split("/");
+                if (p_apps.length != 0) {
+                    ArrayList<String> apps_l = new ArrayList(Arrays.asList(p_apps));
+                    Bundle bParams = new Bundle();
+                    if (bParams == null)
+                        return null;
+                    bParams.putStringArrayList("start_empty_apps", apps_l);
+                    service.startActivityAsUserEmpty(null, null, intent, null,
+                                  null, null, 0, 0, null, bParams, 0);
+                }
+            }
+            return null;
+        }
+    }
+
     /**
      * See {@link AppWindowContainerController#setWillCloseOrEnterPip(boolean)}
      */
@@ -988,6 +1024,9 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
                 lockTaskLaunchMode = LOCK_TASK_LAUNCH_MODE_IF_WHITELISTED;
             }
         }
+
+        if (mPerf == null)
+            mPerf = new BoostFramework();
     }
 
     void setProcess(ProcessRecord proc) {
@@ -1858,8 +1897,12 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
             if (app != null && app != service.mHomeProcess) {
                 service.mHomeProcess = app;
             }
+            try {
+                new PreferredAppsTask().execute();
+            } catch (Exception e) {
+                Log.v (TAG, "Exception: " + e);
+            }
         }
-
         if (nowVisible) {
             // We won't get a call to reportActivityVisibleLocked() so dismiss lockscreen now.
             mStackSupervisor.reportActivityVisibleLocked(this);
@@ -2058,15 +2101,40 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
                 sb.append(" (total ");
                 TimeUtils.formatDuration(totalTime, sb);
                 sb.append(")");
+                if (mUxPerf != null) {
+                    mUxPerf.perfUXEngine_events(BoostFramework.UXE_EVENT_DISPLAYED_ACT, 0, packageName, (int)totalTime);
+                }
+            } else {
+                if (mUxPerf != null) {
+                    mUxPerf.perfUXEngine_events(BoostFramework.UXE_EVENT_DISPLAYED_ACT, 0, packageName, (int)thisTime);
+                }
             }
             Log.i(TAG, sb.toString());
         }
         mStackSupervisor.reportActivityLaunchedLocked(false, this, thisTime, totalTime);
+        if (appInfo != null) {
+            int isGame = 0;
+            isGame = (appInfo.category == ApplicationInfo.CATEGORY_GAME ||
+                      (appInfo.flags & ApplicationInfo.FLAG_IS_GAME) == ApplicationInfo.FLAG_IS_GAME) ? 1 : 0;
+            if (mUxPerf !=  null) {
+                mUxPerf.perfUXEngine_events(BoostFramework.UXE_EVENT_GAME, 0, packageName, isGame);
+            }
+        }
+        if (mPerfFirstDraw == null) {
+            mPerfFirstDraw = new BoostFramework();
+        }
+        if (mPerfFirstDraw != null) {
+            mPerfFirstDraw.perfHint(BoostFramework.VENDOR_HINT_FIRST_DRAW, info.packageName, (int)thisTime, BoostFramework.Draw.EVENT_TYPE_V1);
+        }
         if (totalTime > 0) {
             //service.mUsageStatsService.noteLaunchTime(realActivity, (int)totalTime);
         }
         displayStartTime = 0;
         entry.mLaunchStartTime = 0;
+        if (mPerf != null && perfActivityBoostHandler > 0) {
+            mPerf.perfLockReleaseHandler(perfActivityBoostHandler);
+            perfActivityBoostHandler = -1;
+        }
     }
 
     @Override
@@ -2101,6 +2169,7 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
             if (DEBUG_SWITCH) Log.v(TAG_SWITCH, "windowsVisibleLocked(): " + this);
             if (!nowVisible) {
                 nowVisible = true;
+                launching = false;
                 lastVisibleTime = SystemClock.uptimeMillis();
                 if (idle || mStackSupervisor.isStoppingNoHistoryActivity()) {
                     // If this activity was already idle or there is an activity that must be
@@ -2133,6 +2202,7 @@ final class ActivityRecord extends ConfigurationContainer implements AppWindowCo
         synchronized (service) {
             if (DEBUG_SWITCH) Log.v(TAG_SWITCH, "windowsGone(): " + this);
             nowVisible = false;
+            launching = false;
         }
     }
 
