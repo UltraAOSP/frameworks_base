@@ -5379,7 +5379,8 @@ public class Notification implements Parcelable
 
         private CharSequence processLegacyText(CharSequence charSequence, boolean ambient) {
             boolean isAlreadyLightText = isLegacy() || textColorsNeedInversion();
-            boolean wantLightText = ambient;
+            boolean wantLightText = ambient || mContext.getResources().getBoolean(
+                    R.bool.config_useDarkBgNotificationIconTextTinting);
             if (isAlreadyLightText != wantLightText) {
                 return getColorUtil().invertCharSequenceColors(charSequence);
             } else {
@@ -5395,11 +5396,11 @@ public class Notification implements Parcelable
             boolean colorable = !isLegacy() || getColorUtil().isGrayscaleIcon(mContext, smallIcon);
             int color;
             if (ambient) {
-                color = resolveAmbientColor();
+                color = !mContext.getResources().getBoolean(R.bool.config_allowNotificationIconTextTinting) ? resolveAmbientColor() : mContext.getColor(R.color.system_notification_accent_color);
             } else if (isColorized()) {
                 color = getPrimaryTextColor();
             } else {
-                color = resolveContrastColor();
+                color = !mContext.getResources().getBoolean(R.bool.config_allowNotificationIconTextTinting) ? resolveContrastColor() : mContext.getColor(R.color.system_notification_accent_color);
             }
             if (colorable) {
                 contentView.setDrawableTint(R.id.icon, false, color,
@@ -5419,7 +5420,7 @@ public class Notification implements Parcelable
             if (largeIcon != null && isLegacy()
                     && getColorUtil().isGrayscaleIcon(mContext, largeIcon)) {
                 // resolve color will fall back to the default when legacy
-                contentView.setDrawableTint(R.id.icon, false, resolveContrastColor(),
+                contentView.setDrawableTint(R.id.icon, false, resolveIconContrastColor(),
                         PorterDuff.Mode.SRC_ATOP);
             }
         }
@@ -5430,7 +5431,23 @@ public class Notification implements Parcelable
             }
         }
 
+        int getSenderTextColor() {
+            return mContext.getColor(R.color.sender_text_color);
+        }
+
+        int resolveIconContrastColor() {
+            if (!mContext.getResources().getBoolean(R.bool.config_allowNotificationIconTextTinting)) {
+                return mContext.getColor(R.color.system_notification_accent_color);
+            } else {
+                return resolveContrastColor();
+            }
+        }
+
         int resolveContrastColor() {
+            if (!mContext.getResources().getBoolean(R.bool.config_allowNotificationIconTextTinting)) {
+                return mContext.getColor(R.color.system_notification_accent_color);
+            }
+
             if (mCachedContrastColorIsFor == mN.color && mCachedContrastColor != COLOR_INVALID) {
                 return mCachedContrastColor;
             }
@@ -5442,8 +5459,10 @@ public class Notification implements Parcelable
                 ensureColors();
                 color = NotificationColorUtil.resolveDefaultColor(mContext, background);
             } else {
+                boolean isDark = mInNightMode || mContext.getResources()
+                        .getBoolean(R.bool.config_useDarkBgNotificationIconTextTinting);
                 color = NotificationColorUtil.resolveContrastColor(mContext, mN.color,
-                        background, mInNightMode);
+                        background, isDark);
             }
             if (Color.alpha(color) < 255) {
                 // alpha doesn't go well for color filters, so let's blend it manually
@@ -7077,7 +7096,7 @@ public class Notification implements Parcelable
                     bindResult.getIconMarginEnd());
             contentView.setInt(R.id.status_bar_latest_event_content, "setLayoutColor",
                     mBuilder.isColorized() ? mBuilder.getPrimaryTextColor()
-                            : mBuilder.resolveContrastColor());
+                            : mBuilder.getSenderTextColor());
             contentView.setInt(R.id.status_bar_latest_event_content, "setSenderTextColor",
                     mBuilder.getPrimaryTextColor());
             contentView.setInt(R.id.status_bar_latest_event_content, "setMessageTextColor",
