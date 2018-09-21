@@ -1718,14 +1718,6 @@ public final class PowerManager {
                 com.android.internal.R.integer.config_buttonBrightnessSettingDefault);
     }
 
-    /**
-     * Gets the default button brightness value.
-     * @hide
-     */
-    public int getDefaultButtonBrightness() {
-        return mContext.getResources().getInteger(
-                com.android.internal.R.integer.config_buttonBrightnessSettingDefault);
-    }
     public void powerHint(int hintId, int[] data) {
         try {
             mService.powerHint(hintId, data.length > 0 ? data[0] : 0);
